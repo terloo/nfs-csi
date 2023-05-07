@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nfs-csi-pvc-demo-2
+  annotations:
+    "volume.kubernetes.io/storage-provisioner": "nfs-csi"
+spec:
+  storageClassName: nfs-csi-sc
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Mi

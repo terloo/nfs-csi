@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-csi-controller-server
+  namespace: csi
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nfs-csi-controller-server
+  template:
+    metadata:
+      labels:
+        app: nfs-csi-controller-server
+    spec:
+      serviceAccountName: nfs-csi-sa
+      containers:
+        - name: nfs-csi-controller-server
+          image: nfs-csi-controller-server:latest
+          imagePullPolicy: IfNotPresent
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: 9808
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 2
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: nfs-dir
+              mountPath: /nfs/data/
+          args:
+            - "--endpoint"
+            - "unix:///csi/nfs-csi-controller.sock"
+        - name: csi-provisioner
+          image: registry.aliyuncs.com/google_containers/csi-provisioner:v3.4.1
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--csi-address=unix:///csi/nfs-csi-controller.sock"
+            - "--http-endpoint=:8080"
+            - "-v5"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+        - name: csi-attacher
+          image: registry.aliyuncs.com/google_containers/csi-attacher:v4.2.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--csi-address=unix:///csi/nfs-csi-controller.sock"
+            - "-v=5"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+        - name: livenessprobe
+          image: registry.aliyuncs.com/google_containers/livenessprobe:v2.9.0
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+          args:
+            - "--csi-address=unix:///csi/nfs-csi-controller.sock"
+      volumes:
+        - name: socket-dir
+          emptyDir:
+            { }
+        - name: nfs-dir
+          hostPath:
+            path: /nfs/data/

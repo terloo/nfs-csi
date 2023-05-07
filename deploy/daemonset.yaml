@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nfs-csi-node-server
+  namespace: csi
+spec:
+  selector:
+    matchLabels:
+      app: nfs-csi-node-server
+  template:
+    metadata:
+      labels:
+        app: nfs-csi-node-server
+    spec:
+      containers:
+        - name: nfs-csi-node-server
+          image: nfs-csi-node-server:latest
+          imagePullPolicy: IfNotPresent
+          # 由于要在容器内进行挂载操作，需要权限
+#          securityContext:
+#            privileged: true
+#            capabilities:
+#              add: [ "SYS_ADMIN" ]
+#            allowPrivilegeEscalation: true
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: 9808
+            initialDelaySeconds: 10
+            timeoutSeconds: 3
+            periodSeconds: 2
+          args:
+            - "--endpoint"
+            - "unix:///csi/nfs-csi-node.sock"
+          volumeMounts:
+            - name: sock-dir
+              mountPath: /csi
+            - name: pods-mount-dir
+              mountPath: /var/lib/kubelet/pods
+        - name: node-driver-registrar
+          image: registry.aliyuncs.com/google_containers/csi-node-driver-registrar:v2.7.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - "--csi-address=unix:///csi/nfs-csi-node.sock"
+            # 传给kubelet的node-server的scok文件路径
+            - "--kubelet-registration-path=/var/lib/kubelet/plugins/csi-nfs/nfs-csi-node.sock"
+            - "--v=5"
+          volumeMounts:
+            - name: registration-dir
+              mountPath: /registration
+            - name: sock-dir
+              mountPath: /csi
+        - name: livenessprobe
+          image: registry.aliyuncs.com/google_containers/livenessprobe:v2.9.0
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - name: sock-dir
+              mountPath: /csi
+          args:
+            - "--csi-address=unix:///csi/nfs-csi-node.sock"
+      volumes:
+        # 由于kubelet需要与node-server进行调用，所以要将sock文件暴露到hostpath
+        - name: sock-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/csi-nfs
+            type: DirectoryOrCreate
+        # node-driver-registrar使用的sock路径
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        # Pod容器卷路径
+        - name: pods-mount-dir
+          hostPath:
+            path: /var/lib/kubelet/pods
+            type: Directory
