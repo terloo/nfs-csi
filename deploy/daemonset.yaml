@@ -17,11 +17,11 @@ spec:
           image: nfs-csi-node-server:latest
           imagePullPolicy: IfNotPresent
           # 由于要在容器内进行挂载操作，需要权限
-#          securityContext:
-#            privileged: true
-#            capabilities:
-#              add: [ "SYS_ADMIN" ]
-#            allowPrivilegeEscalation: true
+          securityContext:
+            privileged: true
+            capabilities:
+              add: [ "SYS_ADMIN" ]
+            allowPrivilegeEscalation: true
           livenessProbe:
             failureThreshold: 5
             httpGet:

@@ -2,9 +2,11 @@ package driver
 
 import (
 	"context"
-	"errors"
-	"log"
 	"github.com/terloo/nfs-csi/csi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"k8s.io/mount-utils"
+	"log"
 	"os"
 )
 
@@ -58,7 +60,7 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, request *csi.NodePubl
 
 	err := os.MkdirAll(targetPath, os.ModePerm)
 	if err != nil {
-		return nil, errors.New("创建容器目录失败" + err.Error())
+		return nil, status.Error(codes.Internal, "创建容器目录失败"+err.Error())
 	}
 
 	if _, err := os.Lstat(targetPath); !os.IsNotExist(err) {
@@ -69,14 +71,14 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, request *csi.NodePubl
 	// 挂载nfs
 	nfsVolumeDir, ok := request.PublishContext["nfsVolumeDir"]
 	if !ok {
-		return nil, errors.New("无法获取nfs服务器PV路径")
+		return nil, status.Error(codes.Internal, "无法获取nfs服务器PV路径")
 	}
-	log.Println("假装挂载到了", nfsVolumeDir)
-	//command := exec.Command("mount", "-t", "nfs", "10.0.0.9:"+nfsVolumeDir, targetPath)
-	//output, err := command.Output()
-	//if err != nil {
-	//	return nil, errors.New("执行挂载命令失败" + string(output))
-	//}
+
+	mounter := mount.New("")
+	if err := mounter.Mount("10.0.0.9:"+nfsVolumeDir, targetPath, "nfs", request.GetVolumeCapability().GetMount().GetMountFlags()); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
 	log.Println("推送成功")
 	log.Println()
 	return &csi.NodePublishVolumeResponse{}, nil
@@ -85,6 +87,16 @@ func (n NodeServer) NodePublishVolume(ctx context.Context, request *csi.NodePubl
 func (n NodeServer) NodeUnpublishVolume(ctx context.Context, request *csi.NodeUnpublishVolumeRequest) (*csi.NodeUnpublishVolumeResponse, error) {
 	log.Printf("NodeUnpublishVolume %v\n", request)
 	log.Printf("取消推送容器卷%s到目录%s", request.VolumeId, request.TargetPath)
+
+	targetPath := request.TargetPath
+
+	mounter := mount.New("")
+	if err := mounter.Unmount(targetPath); err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	log.Println("取消挂载成功")
+
 	return &csi.NodeUnpublishVolumeResponse{}, nil
 }
 
